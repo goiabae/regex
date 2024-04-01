@@ -238,9 +238,11 @@ void print_regex(Regex* rx) {
 			break;
 		}
 		case REGX_CHOICE: {
+			printf("(");
 			print_regex(rx->choice.fst);
 			printf("|");
 			print_regex(rx->choice.snd);
+			printf(")");
 			break;
 		}
 		case REGX_CHAR: {
@@ -260,19 +262,22 @@ void print_regex(Regex* rx) {
 	}
 }
 
-int main(void) {
-	char* regex = "ab*cd+";
+void test(char* str, char* regex) {
+	size_t str_len = strlen(str);
 	size_t regex_len = strlen(regex);
 	Regex* rx = parse_regex(regex, &regex_len);
-
 	print_regex(rx);
-
-	char* buf = "abbbbcd";
+	printf(": ");
 	size_t read = 0;
-	bool suc = regex_match(buf, strlen(buf), rx, &read);
+	bool suc = regex_match(str, str_len, rx, &read);
 	if (suc)
-		printf("Success!!! Read %zu characters from \"%s\"\n", read, buf);
+		printf("Success!!! Read %zu characters from \"%s\"\n", read, str);
 	else
 		printf("Not Success?\n");
+}
+
+int main(void) {
+	test("abbbbcd", "ab*(c)d+");
+	test("abbbbfd", "ab*(c|f)d+");
 	return 0;
 }

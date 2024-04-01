@@ -11,7 +11,14 @@ typedef enum RegexType {
 	REGX_CHAR,
 	REGX_ANY,
 	REGX_MANY,
+	REGX_CLASS,
 } RegexType;
+
+typedef struct CharClass {
+	size_t len;
+	char (*ranges
+	)[2]; // array of 2-element arrays representing beg and end of range
+} CharClass;
 
 typedef struct Regex {
 	RegexType type;
@@ -27,6 +34,7 @@ typedef struct Regex {
 		char ch;
 		struct Regex* any;
 		struct Regex* many;
+		CharClass klass;
 	};
 } Regex;
 
@@ -95,6 +103,22 @@ bool regex_node_match(char* buf, size_t buf_len, Regex rx, size_t* read) {
 
 			return false;
 		}
+		case REGX_CLASS: {
+			for (size_t i = 0; i < rx.klass.len; i++) {
+				if (rx.klass.ranges[i][1] == '\0') {
+					if (buf[0] == rx.klass.ranges[i][0]) {
+						*read = 1;
+						return true;
+					}
+				} else {
+					if (rx.klass.ranges[i][0] <= buf[0] && buf[0] <= rx.klass.ranges[i][1]) {
+						*read = 1;
+						return true;
+					}
+				}
+			}
+			return false;
+		}
 	}
 	assert(false);
 }
@@ -140,6 +164,41 @@ Regex* rx_seq(Regex* fst, Regex* snd) {
 	return rx;
 }
 
+Regex* rx_klass(size_t len, char (*ranges)[2]) {
+	Regex* rx = malloc(sizeof(Regex));
+	rx->type = REGX_CLASS;
+	rx->klass.len = len;
+	rx->klass.ranges = ranges;
+	return rx;
+}
+
+Regex* parse_klass(char* str, size_t* str_len) {
+	str = str + 1;
+	*str_len -= 1;
+
+	CharClass klass;
+	klass.len = 0;
+	klass.ranges = malloc(sizeof(char[2]) * 16); // FIXME hardcoded
+
+	while (*str_len > 0) {
+		if (*str_len >= 3 && str[1] == '-') {
+			klass.ranges[klass.len][0] = str[0];
+			klass.ranges[klass.len][1] = str[2];
+			klass.len++;
+			*str_len -= 3;
+			str = str + 3;
+		} else {
+			klass.ranges[klass.len][0] = str[0];
+			klass.ranges[klass.len][1] = '\0';
+			klass.len++;
+			*str_len -= 1;
+			str = str + 1;
+		}
+	}
+
+	return rx_klass(klass.len, klass.ranges);
+}
+
 Regex* parse_regex(char* str, size_t* str_len) {
 	Regex* res = NULL;
 	while (*str_len > 0) {
@@ -160,6 +219,16 @@ Regex* parse_regex(char* str, size_t* str_len) {
 				res = rx_seq(res, parse_regex(str + 1, &len));
 			*str_len = *str_len - i;
 			str = str + i;
+		} else if (*str == '[') {
+			size_t i = 0;
+			while (str[i] != ']') i++;
+			size_t len = i;
+			if (!res) {
+				res = parse_klass(str, &len);
+				*str_len = *str_len - i - 1;
+				str = str + i + 1;
+			} else
+				res = rx_seq(res, parse_regex(str, str_len));
 		} else if (*str == '|') {
 			str = str + 1;
 			*str_len -= 1;
@@ -215,6 +284,16 @@ void print_regex(Regex* rx) {
 			printf("+");
 			break;
 		}
+		case REGX_CLASS: {
+			printf("[");
+			for (size_t i = 0; i < rx->klass.len; i++) {
+				if (rx->klass.ranges[i][1] == '\0')
+					printf("%c", rx->klass.ranges[i][0]);
+				else
+					printf("%c-%c", rx->klass.ranges[i][0], rx->klass.ranges[i][1]);
+			}
+			printf("]");
+		}
 	}
 }
 
@@ -235,5 +314,11 @@ void test(char* str, char* regex) {
 int main(void) {
 	test("abbbbcd", "ab*(c)d+");
 	test("abbbbfd", "ab*(c|f)d+");
+	test("a", "[ab]");
+	test("b", "[ab]");
+	test("abbbbaaaa", "[ab]*");
+	test("some_id69420", "[_a-zA-Z][_a-zA-Z0-9]*");
+	test("a_", "[_a-z][_]");
+	test("for var i from 0 to 10", "for");
 	return 0;
 }

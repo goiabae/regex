@@ -140,76 +140,26 @@ Regex* rx_seq(Regex* fst, Regex* snd) {
 	return rx;
 }
 
-#if 0
-Regex* parse_regex(char* str, size_t str_len) {
-	Regex* fst = NULL;
-	if (str[0] == '(') {
-		size_t i = 0;
-		size_t j = 1;
-		while (str[i] != ')' && j == 0) {
-			if (str[0] == '(')
-				j++;
-			else if (str[0] == ')')
-				j--;
-			i++;
-		}
-		fst = parse_regex(str + 1, str_len - i - 1);
-	} else {
-		fst = rx_char(str[0]);
-	}
-
-	Regex* res = NULL;
-	if (str_len > 1) {
-		if (str[1] == '|')
-			res = rx_choice(fst, parse_regex(str + 2, str_len - 2));
-		else if (str[1] == '+')
-			res = rx_many(fst);
-		else if (str[1] == '*')
-			res = rx_any(fst);
-		else
-			res = rx_seq(fst, parse_regex(str + 1, str_len - 1));
-	} else {
-		res = fst;
-	}
-	return res;
-}
-#endif
-
 Regex* parse_regex(char* str, size_t* str_len) {
 	Regex* res = NULL;
-	if (str[0] == '(') {
-		size_t i = 0;
-		size_t j = 1;
-		while (str[i] != ')' && j == 0) {
-			if (str[0] == '(')
-				j++;
-			else if (str[0] == ')')
-				j--;
-			i++;
-		}
-		*str_len = *str_len - i - 1;
-		str = str + 1;
-		res = parse_regex(str, str_len);
-	} else {
-		res = rx_char(str[0]);
-		str = str + 1;
-		*str_len -= 1;
-	}
-
 	while (*str_len > 0) {
 		if (*str == '(') {
-			size_t i = 0;
+			size_t i = 1;
 			size_t j = 1;
-			while (str[i] != ')' && j == 0) {
-				if (str[0] == '(')
+			while (j != 0) {
+				if (str[i] == '(')
 					j++;
-				else if (str[0] == ')')
+				else if (str[i] == ')')
 					j--;
 				i++;
 			}
-			*str_len = *str_len - i - 1;
-			str = str + 1;
-			res = rx_seq(res, parse_regex(str, str_len));
+			size_t len = i - 2;
+			if (!res) {
+				res = parse_regex(str + 1, &len);
+			} else
+				res = rx_seq(res, parse_regex(str + 1, &len));
+			*str_len = *str_len - i;
+			str = str + i;
 		} else if (*str == '|') {
 			str = str + 1;
 			*str_len -= 1;
@@ -223,7 +173,13 @@ Regex* parse_regex(char* str, size_t* str_len) {
 			*str_len -= 1;
 			res = rx_many(res);
 		} else {
-			res = rx_seq(res, parse_regex(str, str_len));
+			if (!res) {
+				res = rx_char(str[0]);
+				str = str + 1;
+				*str_len -= 1;
+			} else {
+				res = rx_seq(res, parse_regex(str, str_len));
+			}
 		}
 	}
 
